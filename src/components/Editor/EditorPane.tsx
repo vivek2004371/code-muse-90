@@ -14,14 +14,17 @@ export function EditorPane() {
   const closeTab = useAppStore((state) => state.closeTab);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const files =
-    useLiveQuery(
-      () => (openTabs.length ? db.files.bulkGet(openTabs) : Promise.resolve([])),
+  const tabs =
+    useLiveQuery<FileNode[], FileNode[]>(
+      async () => {
+        if (openTabs.length === 0) return [];
+        const found = await db.files.bulkGet(openTabs);
+        return found.filter((file): file is FileNode => Boolean(file));
+      },
       [openTabs.join(",")],
-      [] as Array<FileNode | undefined>,
+      [],
     ) ?? [];
 
-  const tabs = files.filter((file): file is FileNode => Boolean(file));
   const activeFile = tabs.find((file) => file.id === activeFileId) ?? null;
 
   const handleChange = useCallback(
