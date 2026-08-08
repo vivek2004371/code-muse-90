@@ -66,7 +66,14 @@ const STARTER_FILES: Array<{ name: string; content: string }> = [
   },
 ];
 
-export async function ensureSeedData(): Promise<void> {
+let seedPromise: Promise<void> | null = null;
+
+export function ensureSeedData(): Promise<void> {
+  seedPromise ??= seedOnce();
+  return seedPromise;
+}
+
+async function seedOnce(): Promise<void> {
   const existing = await db.projects.get(DEFAULT_PROJECT_ID);
   if (existing) return;
 
