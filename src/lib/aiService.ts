@@ -90,7 +90,7 @@ async function* streamMessage(options: {
   system: string;
   messages: ChatTurn[];
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): AsyncGenerator<string> {
   const key = assertKey();
   const response = await fetch(ANTHROPIC_URL, {
@@ -147,7 +147,7 @@ export async function streamChat(options: {
   fileName: string;
   fileContent: string;
   onDelta: (chunk: string) => void;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): Promise<string> {
   const context = `Active file: ${options.fileName}\n\n\`\`\`\n${options.fileContent}\n\`\`\``;
   const turns: ChatTurn[] = options.messages.map((turn, index) =>
@@ -173,7 +173,7 @@ export async function streamInlineEdit(options: {
   code: string;
   fileName: string;
   onDelta: (chunk: string) => void;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): Promise<string> {
   const prompt = `File: ${options.fileName}\nInstruction: ${options.instruction}\n\nCode:\n${options.code}`;
   let full = "";
@@ -191,11 +191,11 @@ export async function streamInlineEdit(options: {
 export function stripFences(text: string): string {
   const trimmed = text.trim();
   const match = /^```[a-zA-Z0-9+-]*\n([\s\S]*?)\n?```$/.exec(trimmed);
-  return match ? match[1] : trimmed;
+  return match?.[1] ?? trimmed;
 }
 
 export function extractCodeBlock(markdown: string): string | null {
   const matches = [...markdown.matchAll(/```[a-zA-Z0-9+-]*\n([\s\S]*?)```/g)];
   if (matches.length === 0) return null;
-  return matches[matches.length - 1][1].replace(/\n$/, "");
+  return matches[matches.length - 1]?.[1]?.replace(/\n$/, "") ?? null;
 }
