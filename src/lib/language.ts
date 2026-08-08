@@ -1,0 +1,43 @@
+const EXTENSION_LANGUAGE: Record<string, string> = {
+  ts: "typescript",
+  tsx: "typescript",
+  mts: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  less: "less",
+  md: "markdown",
+  markdown: "markdown",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cs: "csharp",
+  php: "php",
+  sh: "shell",
+  bash: "shell",
+  sql: "sql",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "ini",
+  ini: "ini",
+  xml: "xml",
+  svg: "xml",
+  txt: "plaintext",
+};
+
+export function languageForFile(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return EXTENSION_LANGUAGE[ext] ?? "plaintext";
+}
