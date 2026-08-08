@@ -8,6 +8,7 @@ import { HistoryPanel } from "@/components/History/HistoryPanel";
 import { SettingsModal } from "@/components/SettingsModal";
 import { FileExplorer } from "@/components/Sidebar/FileExplorer";
 import { ensureSeedData } from "@/lib/db";
+import { registerServiceWorker } from "@/lib/register-sw";
 import { useAppStore } from "@/store/useAppStore";
 
 export default function IdeApp() {
@@ -23,6 +24,7 @@ export default function IdeApp() {
 
   useEffect(() => {
     void ensureSeedData().finally(() => setReady(true));
+    registerServiceWorker();
   }, []);
 
   useEffect(() => {
