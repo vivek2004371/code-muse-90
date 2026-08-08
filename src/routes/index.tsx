@@ -1,24 +1,54 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+import { Toaster } from "@/components/ui/sonner";
+
+const IdeApp = lazy(() => import("@/components/IdeApp"));
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "antigrav.dev — Local-First AI Code Editor" },
+      {
+        name: "description",
+        content:
+          "A browser-native, installable AI code editor: Monaco editing, IndexedDB projects, and Claude-powered inline edits — all local.",
+      },
+      { property: "og:title", content: "antigrav.dev — Local-First AI Code Editor" },
+      {
+        property: "og:description",
+        content:
+          "Monaco editor, IndexedDB workspace, Claude chat and Ctrl+K inline edits. Installable PWA, no backend.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "theme-color", content: "#0b0d10" },
+    ],
+    links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+function LoadingShell() {
+  return (
+    <div className="flex h-[100dvh] items-center justify-center bg-background">
+      <p className="animate-pulse font-mono text-sm text-muted-foreground">booting workspace…</p>
+    </div>
+  );
+}
+
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <>
+      <ClientOnly fallback={<LoadingShell />}>
+        <Suspense fallback={<LoadingShell />}>
+          <IdeApp />
+        </Suspense>
+      </ClientOnly>
+      <Toaster />
+    </>
   );
 }
