@@ -96,7 +96,7 @@ async function* streamMessage(options: {
   const response = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: headers(key),
-    signal: options.signal,
+    signal: options.signal ?? null,
     body: JSON.stringify({
       model: getModel(),
       max_tokens: options.maxTokens ?? 4096,
@@ -160,7 +160,7 @@ export async function streamChat(options: {
   for await (const chunk of streamMessage({
     system: CHAT_SYSTEM_PROMPT,
     messages: turns,
-    signal: options.signal,
+    signal: options.signal ?? null,
   })) {
     full += chunk;
     options.onDelta(chunk);
@@ -180,7 +180,7 @@ export async function streamInlineEdit(options: {
   for await (const chunk of streamMessage({
     system: INLINE_SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
-    signal: options.signal,
+    signal: options.signal ?? null,
   })) {
     full += chunk;
     options.onDelta(chunk);
