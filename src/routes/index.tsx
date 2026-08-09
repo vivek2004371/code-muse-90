@@ -12,13 +12,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "A browser-native, installable AI code editor: Monaco editing, IndexedDB projects, and Claude-powered inline edits — all local.",
+          "A browser-native, installable AI code editor: Monaco editing, IndexedDB projects, and multi-model inline edits — all local.",
       },
       { property: "og:title", content: "antigrav.dev — Local-First AI Code Editor" },
       {
         property: "og:description",
         content:
-          "Monaco editor, IndexedDB workspace, Claude chat and Ctrl+K inline edits. Installable PWA, no backend.",
+          "Monaco editor, IndexedDB workspace, multi-model AI chat and Ctrl+K inline edits. Installable PWA, no backend.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

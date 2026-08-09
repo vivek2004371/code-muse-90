@@ -1,12 +1,17 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowUp, Check, Loader2, Sparkle, Trash2 } from "lucide-react";
+import { ArrowUp, Check, GitCompare, Loader2, Sparkle, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { DiffView } from "@/components/AIChat/DiffView";
 import {
   AiError,
+  PROVIDER_PRESETS,
   extractCodeBlock,
   getApiKey,
+  getBaseUrl,
+  getModel,
+  setModel as persistModel,
   streamChat,
   type ChatTurn,
 } from "@/lib/aiService";
@@ -45,7 +50,13 @@ export function AIChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [model, setModelState] = useState("");
+  const [diffFor, setDiffFor] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setModelState(getModel());
+  }, []);
 
   const activeFile =
     useLiveQuery<FileNode | null, FileNode | null>(
@@ -58,11 +69,18 @@ export function AIChatPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  const presetModels = PROVIDER_PRESETS.find(
+    (entry) => entry.baseUrl === (typeof window === "undefined" ? "" : getBaseUrl()),
+  )?.models;
+  const modelOptions = Array.from(
+    new Set([...(presetModels ?? []).map((entry) => entry.id), model].filter(Boolean)),
+  );
+
   const send = async () => {
     const prompt = input.trim();
     if (!prompt || busy) return;
     if (!getApiKey()) {
-      toast.error("Add your Anthropic API key first.");
+      toast.error("Add your API key first.");
       setSettingsOpen(true);
       return;
     }
@@ -82,11 +100,14 @@ export function AIChatPanel() {
     setInput("");
     setBusy(true);
 
+    const baseline = activeFile?.content ?? "";
+
     try {
       await streamChat({
         messages: history,
         fileName: activeFile?.name ?? "untitled",
-        fileContent: activeFile?.content ?? "",
+        fileContent: baseline,
+        ...(model ? { model } : {}),
         onDelta: (chunk) =>
           setMessages((prev) =>
             prev.map((message) =>
@@ -129,14 +150,30 @@ export function AIChatPanel() {
       return;
     }
     await saveFileContent(activeFileId, code);
+    setDiffFor(null);
     toast.success(`Applied changes to ${activeFile?.name ?? "file"}`);
   };
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="font-mono text-xs text-muted-foreground">
-          context: {activeFile?.name ?? "no file"}
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <select
+          value={model}
+          className="min-w-0 flex-1 truncate rounded border border-border bg-background px-1.5 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary/60"
+          onChange={(event) => {
+            setModelState(event.target.value);
+            persistModel(event.target.value);
+          }}
+        >
+          {modelOptions.length === 0 && <option value="">no model configured</option>}
+          {modelOptions.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+        <span className="hidden truncate font-mono text-[11px] text-muted-foreground sm:block">
+          {activeFile?.name ?? "no file"}
         </span>
         <button
           type="button"
@@ -172,13 +209,33 @@ export function AIChatPanel() {
                 <p className="animate-pulse text-sm text-muted-foreground">Thinking…</p>
               )}
               {message.content.includes("```") && (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                  onClick={() => void applyCode(message.content)}
-                >
-                  <Check className="size-3.5" /> Apply code to active file
-                </button>
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() =>
+                        setDiffFor((prev) => (prev === message.id ? null : message.id))
+                      }
+                    >
+                      <GitCompare className="size-3.5" />
+                      {diffFor === message.id ? "Hide diff" : "View diff"}
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                      onClick={() => void applyCode(message.content)}
+                    >
+                      <Check className="size-3.5" /> Apply changes
+                    </button>
+                  </div>
+                  {diffFor === message.id && (
+                    <DiffView
+                      before={activeFile?.content ?? ""}
+                      after={extractCodeBlock(message.content) ?? ""}
+                    />
+                  )}
+                </>
               )}
             </div>
           ),
@@ -190,7 +247,7 @@ export function AIChatPanel() {
           <textarea
             value={input}
             rows={2}
-            placeholder="Ask Claude about this file…"
+            placeholder="Ask the model about this file…"
             className="max-h-40 min-h-[38px] flex-1 resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {

@@ -81,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "A local-first, installable AI code editor that runs entirely in your browser." },
       { name: "author", content: "antigrav.dev" },
       { property: "og:title", content: "antigrav.dev — Local-First AI Code Editor" },
-      { property: "og:description", content: "Monaco editing, IndexedDB workspace, and Claude-powered AI edits in the browser." },
+      { property: "og:description", content: "Monaco editing, IndexedDB workspace, and multi-model AI edits in the browser." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
