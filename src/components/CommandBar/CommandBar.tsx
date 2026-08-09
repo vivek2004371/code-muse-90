@@ -30,7 +30,7 @@ export function CommandBar() {
     const prompt = instruction.trim();
     if (!prompt || busy) return;
     if (!getApiKey()) {
-      toast.error("Add your Anthropic API key first.");
+      toast.error("Add your API key first.");
       setOpen(false);
       setSettingsOpen(true);
       return;
