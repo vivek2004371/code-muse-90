@@ -1,17 +1,26 @@
 /**
  * Universal AI adapter.
  *
- * Speaks the OpenAI `/chat/completions` wire format, which is supported by
- * OpenRouter, OpenAI, Groq, DeepSeek, Together, Ollama, LM Studio, vLLM and
- * virtually every hosted or local LLM runtime. Point the base URL anywhere.
+ * Speaks two wire formats:
+ *  - `openai-compatible`: POST {baseUrl}/chat/completions (OpenRouter, OpenAI,
+ *    Gemini's OpenAI shim, DeepSeek, Groq, Ollama, LM Studio, vLLM…)
+ *  - `anthropic`: POST {baseUrl}/v1/messages with x-api-key auth and
+ *    Anthropic's own SSE event schema.
  */
 
 const API_KEY_STORAGE_KEY = "ai_api_key";
 const BASE_URL_STORAGE_KEY = "ai_base_url";
 const MODEL_STORAGE_KEY = "ai_model";
+const PROVIDER_KIND_STORAGE_KEY = "ai_provider_kind";
 
-export const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
-export const DEFAULT_MODEL = "google/gemini-flash-1.5";
+export type ProviderKind = "anthropic" | "openai-compatible";
+
+export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+export const ANTHROPIC_VERSION = "2023-06-01";
+
+export const DEFAULT_PROVIDER_KIND: ProviderKind = "anthropic";
+export const DEFAULT_BASE_URL = ANTHROPIC_BASE_URL;
+export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 export interface ModelPreset {
   id: string;
@@ -21,14 +30,27 @@ export interface ModelPreset {
 export interface ProviderPreset {
   label: string;
   baseUrl: string;
+  kind: ProviderKind;
   models: ModelPreset[];
   keyHint: string;
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
+    label: "Anthropic (Claude)",
+    baseUrl: ANTHROPIC_BASE_URL,
+    kind: "anthropic",
+    keyHint: "sk-ant-…",
+    models: [
+      { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+      { id: "claude-opus-4-1", label: "Claude Opus 4.1" },
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+    ],
+  },
+  {
     label: "OpenRouter (any model)",
     baseUrl: "https://openrouter.ai/api/v1",
+    kind: "openai-compatible",
     keyHint: "sk-or-v1-…",
     models: [
       { id: "google/gemini-flash-1.5", label: "Gemini Flash 1.5" },
@@ -44,6 +66,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
+    kind: "openai-compatible",
     keyHint: "sk-…",
     models: [
       { id: "gpt-4o", label: "GPT-4o" },
@@ -53,6 +76,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: "Google Gemini (OpenAI-compatible)",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    kind: "openai-compatible",
     keyHint: "AIza…",
     models: [
       { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
@@ -62,6 +86,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: "DeepSeek",
     baseUrl: "https://api.deepseek.com/v1",
+    kind: "openai-compatible",
     keyHint: "sk-…",
     models: [
       { id: "deepseek-chat", label: "DeepSeek Chat" },
@@ -71,6 +96,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
+    kind: "openai-compatible",
     keyHint: "gsk_…",
     models: [
       { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
@@ -80,6 +106,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: "Local (Ollama / LM Studio)",
     baseUrl: "http://localhost:11434/v1",
+    kind: "openai-compatible",
     keyHint: "ollama (any value)",
     models: [
       { id: "qwen2.5-coder:7b", label: "Qwen 2.5 Coder 7B" },
@@ -101,6 +128,16 @@ export function clearApiKey(): void {
   window.localStorage.removeItem(API_KEY_STORAGE_KEY);
 }
 
+/** Strips trailing slashes plus common `/v1` / `/chat/completions` typos for Anthropic. */
+export function normalizeBaseUrl(url: string, kind: ProviderKind): string {
+  let next = url.trim().replace(/\/+$/, "");
+  if (kind === "anthropic") {
+    next = next.replace(/\/chat\/completions$/, "").replace(/\/v1$/, "");
+    if (!next) next = ANTHROPIC_BASE_URL;
+  }
+  return next;
+}
+
 export function getBaseUrl(): string {
   if (typeof window === "undefined") return DEFAULT_BASE_URL;
   const stored = window.localStorage.getItem(BASE_URL_STORAGE_KEY)?.trim();
@@ -120,9 +157,33 @@ export function setModel(model: string): void {
   window.localStorage.setItem(MODEL_STORAGE_KEY, model.trim());
 }
 
+export function getProviderKind(): ProviderKind {
+  if (typeof window === "undefined") return DEFAULT_PROVIDER_KIND;
+  const stored = window.localStorage.getItem(PROVIDER_KIND_STORAGE_KEY);
+  return stored === "anthropic" || stored === "openai-compatible"
+    ? stored
+    : DEFAULT_PROVIDER_KIND;
+}
+
+export function setProviderKind(kind: ProviderKind): void {
+  window.localStorage.setItem(PROVIDER_KIND_STORAGE_KEY, kind);
+}
+
+export function isAnthropicKey(key: string): boolean {
+  return key.trim().startsWith("sk-ant-");
+}
+
 export class AiError extends Error {}
 
-function headers(apiKey: string): Record<string, string> {
+function headers(apiKey: string, kind: ProviderKind): Record<string, string> {
+  if (kind === "anthropic") {
+    return {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": ANTHROPIC_VERSION,
+      "anthropic-dangerous-direct-browser-access": "true",
+    };
+  }
   const base: Record<string, string> = {
     "content-type": "application/json",
     authorization: `Bearer ${apiKey}`,
@@ -141,12 +202,27 @@ function assertKey(): string {
   return key;
 }
 
-function describeStatus(status: number, body: string): string {
-  if (status === 401 || status === 403) return "API key rejected by the provider.";
+function extractErrorMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string } | string };
+    if (typeof parsed.error === "string") return parsed.error;
+    return parsed.error?.message ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function describeStatus(status: number, body: string, kind: ProviderKind = "openai-compatible"): string {
+  const detail = extractErrorMessage(body);
+  if (status === 401 || status === 403) {
+    return kind === "anthropic"
+      ? "API key rejected by Anthropic."
+      : "API key rejected by the provider.";
+  }
   if (status === 404) return "Model or endpoint not found. Check the base URL and model name.";
   if (status === 429) return "Rate limited. Try again shortly.";
   if (status === 402) return "Provider reports insufficient credits.";
-  return `API error ${status}: ${body.slice(0, 300)}`;
+  return `API error ${status}: ${(detail ?? body).slice(0, 300)}`;
 }
 
 /** Lists models from `/models` when the provider supports it. */
@@ -154,13 +230,20 @@ export async function listModels(
   apiKey: string,
   baseUrl: string,
   signal?: AbortSignal,
+  kind: ProviderKind = "openai-compatible",
 ): Promise<string[]> {
+  if (kind === "anthropic") {
+    // Anthropic has no browser-reachable public model list — use the presets.
+    return (PROVIDER_PRESETS.find((entry) => entry.kind === "anthropic")?.models ?? []).map(
+      (entry) => entry.id,
+    );
+  }
   const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
-    headers: headers(apiKey.trim()),
+    headers: headers(apiKey.trim(), kind),
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    throw new AiError(describeStatus(response.status, await response.text().catch(() => "")));
+    throw new AiError(describeStatus(response.status, await response.text().catch(() => ""), kind));
   }
   const payload = (await response.json()) as { data?: Array<{ id?: string }> };
   return (payload.data ?? [])
@@ -174,19 +257,41 @@ export async function validateCredentials(options: {
   apiKey: string;
   baseUrl: string;
   model: string;
+  kind?: ProviderKind;
 }): Promise<boolean> {
-  const response = await fetch(`${options.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+  const kind = options.kind ?? "openai-compatible";
+  const key = options.apiKey.trim();
+  const base = normalizeBaseUrl(options.baseUrl, kind);
+
+  if (kind === "openai-compatible" && isAnthropicKey(key)) {
+    throw new AiError(
+      "That looks like an Anthropic key (sk-ant-…). Switch the provider preset to “Anthropic (Claude)”.",
+    );
+  }
+
+  const url =
+    kind === "anthropic" ? `${base}/v1/messages` : `${base}/chat/completions`;
+  const body =
+    kind === "anthropic"
+      ? {
+          model: options.model,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        }
+      : {
+          model: options.model,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        };
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: headers(options.apiKey.trim()),
-    body: JSON.stringify({
-      model: options.model,
-      max_tokens: 1,
-      messages: [{ role: "user", content: "ping" }],
-    }),
+    headers: headers(key, kind),
+    body: JSON.stringify(body),
   });
   if (response.ok) return true;
   if (response.status === 401 || response.status === 403) return false;
-  throw new AiError(describeStatus(response.status, await response.text().catch(() => "")));
+  throw new AiError(describeStatus(response.status, await response.text().catch(() => ""), kind));
 }
 
 export interface ChatTurn {
@@ -209,38 +314,11 @@ export const INLINE_SYSTEM_PROMPT = `You are an inline code transformer inside a
 The user gives an instruction and a code snippet. Return ONLY the rewritten code.
 No explanations, no commentary, no markdown fences. Preserve the original indentation style.`;
 
-async function* streamCompletion(options: {
-  system: string;
-  messages: ChatTurn[];
-  model?: string;
-  maxTokens?: number;
-  signal?: AbortSignal | null | undefined;
-}): AsyncGenerator<string> {
-  const key = assertKey();
-  const response = await fetch(`${getBaseUrl()}/chat/completions`, {
-    method: "POST",
-    headers: headers(key),
-    signal: options.signal ?? null,
-    body: JSON.stringify({
-      model: options.model ?? getModel(),
-      max_tokens: options.maxTokens ?? 4096,
-      stream: true,
-      messages: [
-        { role: "system", content: options.system },
-        ...options.messages,
-      ],
-    }),
-  });
-
-  if (!response.ok || !response.body) {
-    const text = await response.text().catch(() => "");
-    throw new AiError(describeStatus(response.status, text));
-  }
-
-  const reader = response.body.getReader();
+/** Iterates `data:` payloads out of an SSE response body. */
+async function* sseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -252,20 +330,115 @@ async function* streamCompletion(options: {
       if (!trimmed.startsWith("data:")) continue;
       const payload = trimmed.slice(5).trim();
       if (!payload || payload === "[DONE]") continue;
-      try {
-        const event = JSON.parse(payload) as {
-          choices?: Array<{ delta?: { content?: string | null } }>;
-          error?: { message?: string };
-        };
-        if (event.error?.message) throw new AiError(event.error.message);
-        const chunk = event.choices?.[0]?.delta?.content;
-        if (chunk) yield chunk;
-      } catch (error) {
-        if (error instanceof AiError) throw error;
-        // ignore malformed keep-alive frames
-      }
+      yield payload;
     }
   }
+}
+
+async function* streamAnthropic(options: {
+  system: string;
+  messages: ChatTurn[];
+  model: string;
+  maxTokens: number;
+  signal?: AbortSignal | null | undefined;
+}): AsyncGenerator<string> {
+  const key = assertKey();
+  const base = normalizeBaseUrl(getBaseUrl(), "anthropic");
+  const response = await fetch(`${base}/v1/messages`, {
+    method: "POST",
+    headers: headers(key, "anthropic"),
+    signal: options.signal ?? null,
+    body: JSON.stringify({
+      model: options.model,
+      max_tokens: options.maxTokens,
+      system: options.system,
+      messages: options.messages,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => "");
+    throw new AiError(describeStatus(response.status, text, "anthropic"));
+  }
+
+  for await (const payload of sseFrames(response.body)) {
+    let event: {
+      type?: string;
+      delta?: { type?: string; text?: string };
+      error?: { message?: string };
+    };
+    try {
+      event = JSON.parse(payload) as typeof event;
+    } catch {
+      continue; // keep-alive / malformed frame
+    }
+    if (event.error?.message) throw new AiError(event.error.message);
+    if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+      if (event.delta.text) yield event.delta.text;
+    }
+    // message_start / content_block_start / message_delta / message_stop / ping → ignored
+  }
+}
+
+async function* streamOpenAiCompatible(options: {
+  system: string;
+  messages: ChatTurn[];
+  model: string;
+  maxTokens: number;
+  signal?: AbortSignal | null | undefined;
+}): AsyncGenerator<string> {
+  const key = assertKey();
+  const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+    method: "POST",
+    headers: headers(key, "openai-compatible"),
+    signal: options.signal ?? null,
+    body: JSON.stringify({
+      model: options.model,
+      max_tokens: options.maxTokens,
+      stream: true,
+      messages: [{ role: "system", content: options.system }, ...options.messages],
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => "");
+    throw new AiError(describeStatus(response.status, text));
+  }
+
+  for await (const payload of sseFrames(response.body)) {
+    let event: {
+      choices?: Array<{ delta?: { content?: string | null } }>;
+      error?: { message?: string };
+    };
+    try {
+      event = JSON.parse(payload) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.error?.message) throw new AiError(event.error.message);
+    const chunk = event.choices?.[0]?.delta?.content;
+    if (chunk) yield chunk;
+  }
+}
+
+function streamCompletion(options: {
+  system: string;
+  messages: ChatTurn[];
+  model?: string;
+  maxTokens?: number;
+  signal?: AbortSignal | null | undefined;
+}): AsyncGenerator<string> {
+  const resolved = {
+    system: options.system,
+    messages: options.messages,
+    model: options.model ?? getModel(),
+    maxTokens: options.maxTokens ?? 4096,
+    signal: options.signal ?? null,
+  };
+  return getProviderKind() === "anthropic"
+    ? streamAnthropic(resolved)
+    : streamOpenAiCompatible(resolved);
 }
 
 export async function streamChat(options: {
